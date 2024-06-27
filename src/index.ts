@@ -72,7 +72,7 @@ export default {
 			let sourceData = await sourceResponse.json();
 
 			let pathname = url.searchParams.get('path') 
-							}
+							
 			const metadata = await requestMetadata(pathname)
 			console.log("Metadata fetched:", metadata);
 
