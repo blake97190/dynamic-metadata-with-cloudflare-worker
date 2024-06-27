@@ -72,8 +72,6 @@ export default {
 			let sourceData = await sourceResponse.json();
 
 			let pathname = url.searchParams.get('path') 
-			if(url.searchParams.get('path')){
-				pathname = url.searchParams.get('path') + (url.searchParams.get('path').endsWith('/') ? '' : '/');
 							}
 			const metadata = await requestMetadata(pathname)
 			console.log("Metadata fetched:", metadata);
