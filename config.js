@@ -7,7 +7,11 @@ export const config = {
         },
         {
             pattern: "/club/[^/]+",
-            metaDataEndpoint: "https://another-api.example.com/meta/{id}"
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/clubs/metadata/{clubID}"
+        },
+		{
+            pattern: "/[^/]+",
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/clubs/metadata/slug/{slug}"
         }
         // Add more patterns and their metadata endpoints as needed
     ]
