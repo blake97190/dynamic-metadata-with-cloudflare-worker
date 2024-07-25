@@ -10,6 +10,7 @@ export default {
 
     // Parse the request URL
     const url = new URL(request.url);
+    const referer = request.headers.get('Referer')
 
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
@@ -67,47 +68,54 @@ export default {
         .transform(source);
 
     // Handle page data requests for the WeWeb app
-    } else if (isPageData(url.pathname) && getPatternConfig(url.searchParams.get('path'))) {
-      console.log("Page data detected:", url.pathname);
+    } else if (isPageData(url.pathname)) {
+      	console.log("Page data detected:", url.pathname);
+	console.log("Referer:", referer);
 
       // Fetch the source data content
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
       let sourceData = await sourceResponse.json();
 
-      let pathname = url.searchParams.get('path') + (url.searchParams.get('path').endsWith('/') ? '' : '/');
-      const patternConfigForPageData = getPatternConfig(pathname);
-      const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
-      console.log("Metadata fetched:", metadata);
+      let pathname = referer;
+      pathname = pathname ? pathname + (pathname.endsWith('/') ? '' : '/') : null;
+      if (pathname !== null) {
+        const patternConfigForPageData = getPatternConfig(pathname);
+        if (patternConfigForPageData) {
+          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
+          console.log("Metadata fetched:", metadata);
 
-      // Ensure nested objects exist in the source data
-      sourceData.page = sourceData.page || {};
-      sourceData.page.title = sourceData.page.title || {};
-      sourceData.page.meta = sourceData.page.meta || {};
-      sourceData.page.meta.desc = sourceData.page.meta.desc || {};
-      sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
-      sourceData.page.socialTitle = sourceData.page.socialTitle || {};
-      sourceData.page.socialDesc = sourceData.page.socialDesc || {};
+          // Ensure nested objects exist in the source data
+          sourceData.page = sourceData.page || {};
+          sourceData.page.title = sourceData.page.title || {};
+          sourceData.page.meta = sourceData.page.meta || {};
+          sourceData.page.meta.desc = sourceData.page.meta.desc || {};
+          sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
+          sourceData.page.socialTitle = sourceData.page.socialTitle || {};
+          sourceData.page.socialDesc = sourceData.page.socialDesc || {};
 
-      // Update source data with the fetched metadata
-      if (metadata.title) {
-        sourceData.page.title.en = metadata.title;
-        sourceData.page.socialTitle.en = metadata.title;
-      }
-      if (metadata.description) {
-        sourceData.page.meta.desc.en = metadata.description;
-        sourceData.page.socialDesc.en = metadata.description;
-      }
-      if (metadata.image) {
-        sourceData.page.metaImage = metadata.image;
-      }
-      if (metadata.keywords) {
-        sourceData.page.meta.keywords.en = metadata.keywords;
-      }
+          // Update source data with the fetched metadata
+          if (metadata.title) {
+            sourceData.page.title.en = metadata.title;
+            sourceData.page.socialTitle.en = metadata.title;
+          }
+          if (metadata.description) {
+            sourceData.page.meta.desc.en = metadata.description;
+            sourceData.page.socialDesc.en = metadata.description;
+          }
+          if (metadata.image) {
+            sourceData.page.metaImage = metadata.image;
+          }
+          if (metadata.keywords) {
+            sourceData.page.meta.keywords.en = metadata.keywords;
+          }
 
-      // Return the modified JSON object
-      return new Response(JSON.stringify(sourceData), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+	  console.log("returning file: ", JSON.stringify(sourceData));
+          // Return the modified JSON object
+          return new Response(JSON.stringify(sourceData), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
     }
 
     // If the URL does not match any patterns, fetch and return the original content
