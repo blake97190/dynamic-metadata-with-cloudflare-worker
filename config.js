@@ -1,6 +1,7 @@
 export const config = {
-    domainSource: "https://www.martialmap.com", // Your WeWeb app link
-    patterns: [
+  domainSource: "https://www.martialmap.com", // Your WeWeb app preview link
+  patterns: [
+      
         {
             pattern: "/event/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:tQNSyF-Q/weweb/events/metadata/{eventID}"
