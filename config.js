@@ -1,5 +1,5 @@
 export const config = {
-  domainSource: "https://www.martialmap.com", // Your WeWeb app preview link
+  domainSource: "https://4366f312-f4d0-4eff-a251-563612c31dfe.weweb-preview.io", // Your WeWeb app preview link
   patterns: [
       
         {
