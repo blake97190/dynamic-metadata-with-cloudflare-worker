@@ -17,6 +17,10 @@ export const config = {
 	{
             pattern: "/federation/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:nOwe_not/weweb/federation/metadata/{id}"
+        },
+	{
+            pattern: "/categories/[^/]+",
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:vyycyb66/weweb/beltAndRanking/metadata/{slug}"
         }
         // Add more patterns and their metadata endpoints as needed
     ]
