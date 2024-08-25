@@ -3,18 +3,13 @@ import { config } from '../config.js';
 export default {
   async fetch(request, env, ctx) {
     try {
-      // Extracting configuration values
-      const domainSource = config.domainSource;
-      const patterns = config.patterns;
-
       console.log("Worker started");
       console.log("Incoming request headers:", Object.fromEntries(request.headers));
 
-      // Parse the request URL
       const url = new URL(request.url);
-      const referer = request.headers.get('Referer');
+      const domainSource = config.domainSource;
+      const patterns = config.patterns;
 
-      // Function to get the pattern configuration that matches the URL
       function getPatternConfig(url) {
         for (const patternConfig of patterns) {
           const regex = new RegExp(patternConfig.pattern);
@@ -26,37 +21,64 @@ export default {
         return null;
       }
 
-      // Function to check if the URL matches the page data pattern
       function isPageData(url) {
         const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
         return pattern.test(url);
       }
 
       async function requestMetadata(url, metaDataEndpoint) {
-        const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-        const parts = trimmedUrl.split('/');
-        const id = parts[parts.length - 1];
-        const placeholderPattern = /{([^}]+)}/;
-        const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
-        const metaDataResponse = await fetch(metaDataEndpointWithId);
-        const metadata = await metaDataResponse.json();
-        return metadata;
+        try {
+          const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+          const parts = trimmedUrl.split('/');
+          const id = parts[parts.length - 1];
+          const placeholderPattern = /{([^}]+)}/;
+          const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
+          
+          console.log(`Fetching metadata from: ${metaDataEndpointWithId}`);
+          const metaDataResponse = await fetch(metaDataEndpointWithId);
+          const metadata = await metaDataResponse.json();
+          
+          if (metadata.code === "ERROR_FATAL") {
+            console.error("Metadata fetch error:", metadata.message);
+            return {
+              title: "Default Title",
+              description: "Default Description",
+              image: "https://example.com/default-image.jpg",
+              keywords: "default, keywords"
+            };
+          }
+          
+          console.log("Metadata fetched successfully:", metadata);
+          return metadata;
+        } catch (error) {
+          console.error("Error in requestMetadata:", error);
+          return {
+            title: "Error Title",
+            description: "An error occurred while fetching metadata",
+            image: "https://example.com/error-image.jpg",
+            keywords: "error, metadata"
+          };
+        }
       }
 
-      // Handle dynamic page requests
       const patternConfig = getPatternConfig(url.pathname);
       if (patternConfig) {
         console.log("Dynamic page detected:", url.pathname);
         let source = await fetch(`${domainSource}${url.pathname}`);
         console.log("Source response headers:", Object.fromEntries(source.headers));
+
         const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
         console.log("Metadata fetched:", metadata);
+
         const customHeaderHandler = new CustomHeaderHandler(metadata);
         const transformedResponse = new HTMLRewriter()
           .on('*', customHeaderHandler)
           .transform(source);
 
         const headers = new Headers(transformedResponse.headers);
+        
+        headers.set('X-Worker-Executed', 'true');
+        headers.set('Cache-Control', 'no-store, must-revalidate');
         headers.set('x-robots-tag', 'index, follow');
 
         console.log("Final response headers:", Object.fromEntries(headers));
@@ -68,18 +90,19 @@ export default {
         });
       } else if (isPageData(url.pathname)) {
         console.log("Page data detected:", url.pathname);
-        console.log("Referer:", referer);
         const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
         console.log("Source data response headers:", Object.fromEntries(sourceResponse.headers));
-        let sourceData = await sourceResponse.json();
         
-        let pathname = referer;
-        pathname = pathname ? pathname + (pathname.endsWith('/') ? '' : '/') : null;
-        if (pathname !== null) {
-          const patternConfigForPageData = getPatternConfig(pathname);
+        let sourceData = await sourceResponse.json();
+
+        // Handle metadata for page data if needed
+        const referer = request.headers.get('Referer');
+        if (referer) {
+          const refererUrl = new URL(referer);
+          const patternConfigForPageData = getPatternConfig(refererUrl.pathname);
           if (patternConfigForPageData) {
-            const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
-            console.log("Metadata fetched:", metadata);
+            const metadata = await requestMetadata(refererUrl.pathname, patternConfigForPageData.metaDataEndpoint);
+            console.log("Metadata fetched for page data:", metadata);
 
             // Update sourceData with metadata
             sourceData.page = sourceData.page || {};
@@ -106,25 +129,44 @@ export default {
             }
           }
         }
-        
-        console.log("returning file: ", JSON.stringify(sourceData));
-        const response = new Response(JSON.stringify(sourceData), {
-          headers: { 'Content-Type': 'application/json' }
+
+        const headers = new Headers({
+          'Content-Type': 'application/json',
+          'X-Worker-Executed': 'true',
+          'Cache-Control': 'no-store, must-revalidate',
+          'x-robots-tag': 'index, follow'
         });
-        console.log("Final page data response headers:", Object.fromEntries(response.headers));
-        return response;
+
+        console.log("Final page data response headers:", Object.fromEntries(headers));
+        return new Response(JSON.stringify(sourceData), { headers });
       }
 
       console.log("Fetching original content for:", url.pathname);
-      const sourceUrl = new URL(`${domainSource}${url.pathname}`);
-      const sourceRequest = new Request(sourceUrl, request);
-      const sourceResponse = await fetch(sourceRequest);
-      console.log("Final response headers:", Object.fromEntries(sourceResponse.headers));
-      return sourceResponse;
+      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
+      const headers = new Headers(sourceResponse.headers);
+      
+      headers.set('X-Worker-Executed', 'true');
+      headers.set('Cache-Control', 'no-store, must-revalidate');
+      headers.set('x-robots-tag', 'index, follow');
+
+      console.log("Final response headers:", Object.fromEntries(headers));
+
+      return new Response(sourceResponse.body, {
+        status: sourceResponse.status,
+        statusText: sourceResponse.statusText,
+        headers: headers
+      });
+
     } catch (error) {
       console.error("Worker threw an exception:", error.message);
       console.error("Error stack:", error.stack);
-      return new Response(`Worker Error: ${error.message}`, { status: 500 });
+      return new Response(`Worker Error: ${error.message}`, { 
+        status: 500,
+        headers: {
+          'X-Worker-Executed': 'true',
+          'x-robots-tag': 'noindex'  // We use noindex for error pages
+        }
+      });
     }
   }
 };
