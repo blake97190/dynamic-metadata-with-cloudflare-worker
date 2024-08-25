@@ -55,8 +55,17 @@ export default {
         const transformedResponse = new HTMLRewriter()
           .on('*', customHeaderHandler)
           .transform(source);
-        console.log("Transformed response headers:", Object.fromEntries(transformedResponse.headers));
-        return transformedResponse;
+
+        const headers = new Headers(transformedResponse.headers);
+        headers.set('x-robots-tag', 'index, follow');
+
+        console.log("Final response headers:", Object.fromEntries(headers));
+
+        return new Response(transformedResponse.body, {
+          status: transformedResponse.status,
+          statusText: transformedResponse.statusText,
+          headers: headers
+        });
       } else if (isPageData(url.pathname)) {
         console.log("Page data detected:", url.pathname);
         console.log("Referer:", referer);
@@ -71,8 +80,30 @@ export default {
           if (patternConfigForPageData) {
             const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
             console.log("Metadata fetched:", metadata);
-            // Update sourceData with metadata (as in your original code)
-            // ...
+
+            // Update sourceData with metadata
+            sourceData.page = sourceData.page || {};
+            sourceData.page.title = sourceData.page.title || {};
+            sourceData.page.meta = sourceData.page.meta || {};
+            sourceData.page.meta.desc = sourceData.page.meta.desc || {};
+            sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
+            sourceData.page.socialTitle = sourceData.page.socialTitle || {};
+            sourceData.page.socialDesc = sourceData.page.socialDesc || {};
+
+            if (metadata.title) {
+              sourceData.page.title.en = metadata.title;
+              sourceData.page.socialTitle.en = metadata.title;
+            }
+            if (metadata.description) {
+              sourceData.page.meta.desc.en = metadata.description;
+              sourceData.page.socialDesc.en = metadata.description;
+            }
+            if (metadata.image) {
+              sourceData.page.metaImage = metadata.image;
+            }
+            if (metadata.keywords) {
+              sourceData.page.meta.keywords.en = metadata.keywords;
+            }
           }
         }
         
@@ -104,21 +135,25 @@ class CustomHeaderHandler {
   }
 
   element(element) {
-    if (element.tagName == "title") {
+    if (element.tagName === "title") {
       console.log('Replacing title tag content');
       element.setInnerContent(this.metadata.title);
     }
-    if (element.tagName == "meta") {
+    if (element.tagName === "meta") {
       const name = element.getAttribute("name");
-      switch (name) {
-        case "title":
-        case "description":
-        case "image":
-        case "keywords":
-        case "twitter:title":
-        case "twitter:description":
-          element.setAttribute("content", this.metadata[name.replace('twitter:', '')] || '');
-          break;
+      if (name === "robots") {
+        element.setAttribute("content", "index, follow");
+      } else {
+        switch (name) {
+          case "title":
+          case "description":
+          case "image":
+          case "keywords":
+          case "twitter:title":
+          case "twitter:description":
+            element.setAttribute("content", this.metadata[name.replace('twitter:', '')] || '');
+            break;
+        }
       }
       const itemprop = element.getAttribute("itemprop");
       if (["name", "description", "image"].includes(itemprop)) {
