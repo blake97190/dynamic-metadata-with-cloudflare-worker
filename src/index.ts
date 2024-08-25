@@ -10,7 +10,6 @@ export default {
       const domainSource = config.domainSource;
       const patterns = config.patterns;
 
-      // Existing helper functions remain unchanged
       function getPatternConfig(url) {
         for (const patternConfig of patterns) {
           const regex = new RegExp(patternConfig.pattern);
@@ -71,7 +70,6 @@ export default {
         const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
         console.log("Metadata fetched:", metadata);
 
-        // New logging to verify metadata
         console.log("Applying metadata to HTML:");
         console.log("Title:", metadata.title);
         console.log("Description:", metadata.description);
@@ -97,11 +95,58 @@ export default {
           headers: headers
         });
       } else if (isPageData(url.pathname)) {
-        // Existing page data handling remains unchanged
-        // ...
+        console.log("Page data detected:", url.pathname);
+        const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
+        console.log("Source data response headers:", Object.fromEntries(sourceResponse.headers));
+        
+        let sourceData = await sourceResponse.json();
+
+        // Handle metadata for page data if needed
+        const referer = request.headers.get('Referer');
+        if (referer) {
+          const refererUrl = new URL(referer);
+          const patternConfigForPageData = getPatternConfig(refererUrl.pathname);
+          if (patternConfigForPageData) {
+            const metadata = await requestMetadata(refererUrl.pathname, patternConfigForPageData.metaDataEndpoint);
+            console.log("Metadata fetched for page data:", metadata);
+
+            // Update sourceData with metadata
+            sourceData.page = sourceData.page || {};
+            sourceData.page.title = sourceData.page.title || {};
+            sourceData.page.meta = sourceData.page.meta || {};
+            sourceData.page.meta.desc = sourceData.page.meta.desc || {};
+            sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
+            sourceData.page.socialTitle = sourceData.page.socialTitle || {};
+            sourceData.page.socialDesc = sourceData.page.socialDesc || {};
+
+            if (metadata.title) {
+              sourceData.page.title.en = metadata.title;
+              sourceData.page.socialTitle.en = metadata.title;
+            }
+            if (metadata.description) {
+              sourceData.page.meta.desc.en = metadata.description;
+              sourceData.page.socialDesc.en = metadata.description;
+            }
+            if (metadata.image) {
+              sourceData.page.metaImage = metadata.image;
+            }
+            if (metadata.keywords) {
+              sourceData.page.meta.keywords.en = metadata.keywords;
+            }
+          }
+        }
+
+        const headers = new Headers({
+          'Content-Type': 'application/json',
+          'X-Worker-Executed': 'true',
+          'Cache-Control': 'no-store, must-revalidate',
+          'x-robots-tag': 'index, follow'
+        });
+
+        console.log("Final page data response headers:", Object.fromEntries(headers));
+        return new Response(JSON.stringify(sourceData), { headers });
       }
 
-      // Existing fallback handling remains unchanged
       console.log("Fetching original content for:", url.pathname);
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
       const headers = new Headers(sourceResponse.headers);
@@ -149,27 +194,18 @@ class CustomHeaderHandler {
       const property = element.getAttribute("property");
       console.log(`Found meta tag: name=${name}, property=${property}`);
       
-      if (name === "description") {
+      if (name === "description" || property === "og:description" || name === "twitter:description") {
         console.log('Updating description meta tag');
         element.setAttribute("content", this.metadata.description);
       } else if (name === "keywords") {
         console.log('Updating keywords meta tag');
         element.setAttribute("content", this.metadata.keywords);
-      } else if (property === "og:title") {
-        console.log('Updating og:title meta tag');
+      } else if (name === "title" || property === "og:title" || name === "twitter:title") {
+        console.log('Updating title meta tag');
         element.setAttribute("content", this.metadata.title);
-      } else if (property === "og:description") {
-        console.log('Updating og:description meta tag');
-        element.setAttribute("content", this.metadata.description);
-      } else if (property === "og:image") {
-        console.log('Updating og:image meta tag');
+      } else if (name === "image" || property === "og:image" || name === "twitter:image") {
+        console.log('Updating image meta tag');
         element.setAttribute("content", this.metadata.image);
-      } else if (name === "twitter:title") {
-        console.log('Updating twitter:title meta tag');
-        element.setAttribute("content", this.metadata.title);
-      } else if (name === "twitter:description") {
-        console.log('Updating twitter:description meta tag');
-        element.setAttribute("content", this.metadata.description);
       } else if (name === "robots") {
         console.log('Updating robots meta tag');
         element.setAttribute("content", "index, follow");
