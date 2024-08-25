@@ -11,9 +11,56 @@ export default {
       const patterns = config.patterns;
 
       // Existing helper functions remain unchanged
-      function getPatternConfig(url) { /* ... */ }
-      function isPageData(url) { /* ... */ }
-      async function requestMetadata(url, metaDataEndpoint) { /* ... */ }
+      function getPatternConfig(url) {
+        for (const patternConfig of patterns) {
+          const regex = new RegExp(patternConfig.pattern);
+          let pathname = url + (url.endsWith('/') ? '' : '/');
+          if (regex.test(pathname)) {
+            return patternConfig;
+          }
+        }
+        return null;
+      }
+
+      function isPageData(url) {
+        const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
+        return pattern.test(url);
+      }
+
+      async function requestMetadata(url, metaDataEndpoint) {
+        try {
+          const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+          const parts = trimmedUrl.split('/');
+          const id = parts[parts.length - 1];
+          const placeholderPattern = /{([^}]+)}/;
+          const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
+          
+          console.log(`Fetching metadata from: ${metaDataEndpointWithId}`);
+          const metaDataResponse = await fetch(metaDataEndpointWithId);
+          const metadata = await metaDataResponse.json();
+          
+          if (metadata.code === "ERROR_FATAL") {
+            console.error("Metadata fetch error:", metadata.message);
+            return {
+              title: "Default Title",
+              description: "Default Description",
+              image: "https://example.com/default-image.jpg",
+              keywords: "default, keywords"
+            };
+          }
+          
+          console.log("Metadata fetched successfully:", metadata);
+          return metadata;
+        } catch (error) {
+          console.error("Error in requestMetadata:", error);
+          return {
+            title: "Error Title",
+            description: "An error occurred while fetching metadata",
+            image: "https://example.com/error-image.jpg",
+            keywords: "error, metadata"
+          };
+        }
+      }
 
       const patternConfig = getPatternConfig(url.pathname);
       if (patternConfig) {
@@ -55,7 +102,21 @@ export default {
       }
 
       // Existing fallback handling remains unchanged
-      // ...
+      console.log("Fetching original content for:", url.pathname);
+      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
+      const headers = new Headers(sourceResponse.headers);
+      
+      headers.set('X-Worker-Executed', 'true');
+      headers.set('Cache-Control', 'no-store, must-revalidate');
+      headers.set('x-robots-tag', 'index, follow');
+
+      console.log("Final response headers:", Object.fromEntries(headers));
+
+      return new Response(sourceResponse.body, {
+        status: sourceResponse.status,
+        statusText: sourceResponse.statusText,
+        headers: headers
+      });
 
     } catch (error) {
       console.error("Worker threw an exception:", error.message);
