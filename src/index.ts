@@ -4,6 +4,7 @@ export default {
   async fetch(request, env, ctx) {
     try {
       console.log("Worker started");
+      console.log("Incoming request URL:", request.url);
       console.log("Incoming request headers:", Object.fromEntries(request.headers));
 
       const url = new URL(request.url);
@@ -40,24 +41,14 @@ export default {
           
           if (metadata.code === "ERROR_FATAL") {
             console.error("Metadata fetch error:", metadata.message);
-            return {
-              title: "Default Title",
-              description: "Default Description",
-              image: "https://example.com/default-image.jpg",
-              keywords: "default, keywords"
-            };
+            return null;
           }
           
           console.log("Metadata fetched successfully:", metadata);
           return metadata;
         } catch (error) {
           console.error("Error in requestMetadata:", error);
-          return {
-            title: "Error Title",
-            description: "An error occurred while fetching metadata",
-            image: "https://example.com/error-image.jpg",
-            keywords: "error, metadata"
-          };
+          return null;
         }
       }
 
@@ -68,7 +59,10 @@ export default {
         console.log("Source response headers:", Object.fromEntries(source.headers));
 
         const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
-        console.log("Metadata fetched:", metadata);
+        if (!metadata) {
+          console.log("No valid metadata found, serving original content");
+          return source;
+        }
 
         console.log("Applying metadata to HTML:");
         console.log("Title:", metadata.title);
@@ -78,7 +72,9 @@ export default {
 
         const customHeaderHandler = new CustomHeaderHandler(metadata);
         const transformedResponse = new HTMLRewriter()
-          .on('*', customHeaderHandler)
+          .on('title', customHeaderHandler)
+          .on('meta', customHeaderHandler)
+          .on('link[rel="canonical"]', customHeaderHandler)
           .transform(source);
 
         const headers = new Headers(transformedResponse.headers);
@@ -94,74 +90,11 @@ export default {
           statusText: transformedResponse.statusText,
           headers: headers
         });
-      } else if (isPageData(url.pathname)) {
-        console.log("Page data detected:", url.pathname);
-        const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
-        console.log("Source data response headers:", Object.fromEntries(sourceResponse.headers));
-        
-        let sourceData = await sourceResponse.json();
-
-        // Handle metadata for page data if needed
-        const referer = request.headers.get('Referer');
-        if (referer) {
-          const refererUrl = new URL(referer);
-          const patternConfigForPageData = getPatternConfig(refererUrl.pathname);
-          if (patternConfigForPageData) {
-            const metadata = await requestMetadata(refererUrl.pathname, patternConfigForPageData.metaDataEndpoint);
-            console.log("Metadata fetched for page data:", metadata);
-
-            // Update sourceData with metadata
-            sourceData.page = sourceData.page || {};
-            sourceData.page.title = sourceData.page.title || {};
-            sourceData.page.meta = sourceData.page.meta || {};
-            sourceData.page.meta.desc = sourceData.page.meta.desc || {};
-            sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
-            sourceData.page.socialTitle = sourceData.page.socialTitle || {};
-            sourceData.page.socialDesc = sourceData.page.socialDesc || {};
-
-            if (metadata.title) {
-              sourceData.page.title.en = metadata.title;
-              sourceData.page.socialTitle.en = metadata.title;
-            }
-            if (metadata.description) {
-              sourceData.page.meta.desc.en = metadata.description;
-              sourceData.page.socialDesc.en = metadata.description;
-            }
-            if (metadata.image) {
-              sourceData.page.metaImage = metadata.image;
-            }
-            if (metadata.keywords) {
-              sourceData.page.meta.keywords.en = metadata.keywords;
-            }
-          }
-        }
-
-        const headers = new Headers({
-          'Content-Type': 'application/json',
-          'X-Worker-Executed': 'true',
-          'Cache-Control': 'no-store, must-revalidate',
-          'x-robots-tag': 'index, follow'
-        });
-
-        console.log("Final page data response headers:", Object.fromEntries(headers));
-        return new Response(JSON.stringify(sourceData), { headers });
       }
 
-      console.log("Fetching original content for:", url.pathname);
-      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
-      const headers = new Headers(sourceResponse.headers);
-      
-      headers.set('X-Worker-Executed', 'true');
-      headers.set('Cache-Control', 'no-store, must-revalidate');
-      headers.set('x-robots-tag', 'index, follow');
-
-      console.log("Final response headers:", Object.fromEntries(headers));
-
-      return new Response(sourceResponse.body, {
-        status: sourceResponse.status,
-        statusText: sourceResponse.statusText,
-        headers: headers
-      });
+      // Handle other requests (non-dynamic pages and page data)
+      console.log("Non-dynamic content detected, serving original content");
+      return fetch(request);
 
     } catch (error) {
       console.error("Worker threw an exception:", error.message);
@@ -181,6 +114,7 @@ export default {
 class CustomHeaderHandler {
   constructor(metadata) {
     this.metadata = metadata;
+    this.titleUpdated = false;
   }
 
   element(element) {
@@ -188,30 +122,29 @@ class CustomHeaderHandler {
       console.log('Found title tag, current content:', element.textContent);
       element.setInnerContent(this.metadata.title);
       console.log('Set new title content:', this.metadata.title);
-    }
-    if (element.tagName === "meta") {
+      this.titleUpdated = true;
+    } else if (element.tagName === "meta") {
       const name = element.getAttribute("name");
       const property = element.getAttribute("property");
       console.log(`Found meta tag: name=${name}, property=${property}`);
       
-      if (name === "description" || property === "og:description" || name === "twitter:description") {
-        console.log('Updating description meta tag');
+      if (name === "description" || property === "og:description") {
         element.setAttribute("content", this.metadata.description);
       } else if (name === "keywords") {
-        console.log('Updating keywords meta tag');
         element.setAttribute("content", this.metadata.keywords);
-      } else if (name === "title" || property === "og:title" || name === "twitter:title") {
-        console.log('Updating title meta tag');
+      } else if (name === "title" || property === "og:title") {
         element.setAttribute("content", this.metadata.title);
-      } else if (name === "image" || property === "og:image" || name === "twitter:image") {
-        console.log('Updating image meta tag');
+      } else if (name === "image" || property === "og:image") {
         element.setAttribute("content", this.metadata.image);
       } else if (name === "robots") {
-        console.log('Updating robots meta tag');
         element.setAttribute("content", "index, follow");
       }
       
       console.log(`Updated meta tag content:`, element.getAttribute("content"));
+    } else if (element.tagName === "link" && element.getAttribute("rel") === "canonical") {
+      const newUrl = new URL(this.metadata.canonicalUrl || element.getAttribute("href"));
+      element.setAttribute("href", newUrl.href);
+      console.log(`Updated canonical URL:`, newUrl.href);
     }
   }
 }
