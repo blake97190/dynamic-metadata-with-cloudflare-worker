@@ -192,6 +192,12 @@ class CustomHeaderHandler {
           element.setAttribute("content", this.metadata.image);
           break;
       }
+	    // Remove the noindex meta tag
+      const robots = element.getAttribute("name");
+      if (robots === "robots" && element.getAttribute("content") === "noindex") {
+        console.log('Removing noindex tag');
+        element.remove();
+      }
     }
   }
 }
