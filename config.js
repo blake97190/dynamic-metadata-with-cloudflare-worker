@@ -11,7 +11,7 @@ export const config = {
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/clubs/metadata/{clubID}"
         },
 	{
-            pattern: "/[^/]+",
+            pattern: "m/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/clubs/metadata/slug/{slug}"
         },
 	{
