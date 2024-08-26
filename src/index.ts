@@ -10,7 +10,6 @@ export default {
       const domainSource = config.domainSource;
       const patterns = config.patterns;
 
-      // Existing helper functions remain unchanged
       function getPatternConfig(url) {
         for (const patternConfig of patterns) {
           const regex = new RegExp(patternConfig.pattern);
@@ -41,24 +40,14 @@ export default {
           
           if (metadata.code === "ERROR_FATAL") {
             console.error("Metadata fetch error:", metadata.message);
-            return {
-              title: "Default Title",
-              description: "Default Description",
-              image: "https://example.com/default-image.jpg",
-              keywords: "default, keywords"
-            };
+            return null;
           }
           
           console.log("Metadata fetched successfully:", metadata);
           return metadata;
         } catch (error) {
           console.error("Error in requestMetadata:", error);
-          return {
-            title: "Error Title",
-            description: "An error occurred while fetching metadata",
-            image: "https://example.com/error-image.jpg",
-            keywords: "error, metadata"
-          };
+          return null;
         }
       }
 
@@ -69,39 +58,37 @@ export default {
         console.log("Source response headers:", Object.fromEntries(source.headers));
 
         const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
-        console.log("Metadata fetched:", metadata);
-
-        // New logging to verify metadata
-        console.log("Applying metadata to HTML:");
-        console.log("Title:", metadata.title);
-        console.log("Description:", metadata.description);
-        console.log("Image:", metadata.image);
-        console.log("Keywords:", metadata.keywords);
-
-        const customHeaderHandler = new CustomHeaderHandler(metadata);
-        const transformedResponse = new HTMLRewriter()
-          .on('*', customHeaderHandler)
-          .transform(source);
-
-        const headers = new Headers(transformedResponse.headers);
         
-        headers.set('X-Worker-Executed', 'true');
-        headers.set('Cache-Control', 'no-store, must-revalidate');
-        headers.set('x-robots-tag', 'index, follow');
+        if (metadata) {
+          console.log("Metadata fetched:", metadata);
 
-        console.log("Final response headers:", Object.fromEntries(headers));
+          const customHeaderHandler = new CustomHeaderHandler(metadata);
+          const transformedResponse = new HTMLRewriter()
+            .on('title', customHeaderHandler)
+            .on('meta', customHeaderHandler)
+            .transform(source);
 
-        return new Response(transformedResponse.body, {
-          status: transformedResponse.status,
-          statusText: transformedResponse.statusText,
-          headers: headers
-        });
-      } else if (isPageData(url.pathname)) {
-        // Existing page data handling remains unchanged
-        // ...
+          const headers = new Headers(transformedResponse.headers);
+          
+          headers.set('X-Worker-Executed', 'true');
+          headers.set('Cache-Control', 'no-store, must-revalidate');
+          headers.set('x-robots-tag', 'index, follow');
+
+          console.log("Final response headers:", Object.fromEntries(headers));
+
+          return new Response(transformedResponse.body, {
+            status: transformedResponse.status,
+            statusText: transformedResponse.statusText,
+            headers: headers
+          });
+        } else {
+          // If metadata fetch fails, return the original response
+          console.log("Metadata fetch failed, returning original response");
+          return source;
+        }
       }
 
-      // Existing fallback handling remains unchanged
+      // For non-dynamic pages, return the original response
       console.log("Fetching original content for:", url.pathname);
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
       const headers = new Headers(sourceResponse.headers);
@@ -121,14 +108,8 @@ export default {
     } catch (error) {
       console.error("Worker threw an exception:", error.message);
       console.error("Error stack:", error.stack);
-      return new Response(`Worker Error: ${error.message}`, { 
-        status: 500,
-        headers: {
-          'X-Worker-Executed': 'true',
-          'x-robots-tag': 'noindex',
-          'Cache-Control': 'no-store, must-revalidate'
-        }
-      });
+      // In case of any error, fetch and return the original content
+      return fetch(request);
     }
   }
 };
@@ -147,35 +128,20 @@ class CustomHeaderHandler {
     if (element.tagName === "meta") {
       const name = element.getAttribute("name");
       const property = element.getAttribute("property");
-      console.log(`Found meta tag: name=${name}, property=${property}`);
       
-      if (name === "description") {
-        console.log('Updating description meta tag');
+      if (name === "description" || property === "og:description") {
         element.setAttribute("content", this.metadata.description);
       } else if (name === "keywords") {
-        console.log('Updating keywords meta tag');
         element.setAttribute("content", this.metadata.keywords);
-      } else if (property === "og:title") {
-        console.log('Updating og:title meta tag');
+      } else if (name === "title" || property === "og:title") {
         element.setAttribute("content", this.metadata.title);
-      } else if (property === "og:description") {
-        console.log('Updating og:description meta tag');
-        element.setAttribute("content", this.metadata.description);
-      } else if (property === "og:image") {
-        console.log('Updating og:image meta tag');
+      } else if (name === "image" || property === "og:image") {
         element.setAttribute("content", this.metadata.image);
-      } else if (name === "twitter:title") {
-        console.log('Updating twitter:title meta tag');
-        element.setAttribute("content", this.metadata.title);
-      } else if (name === "twitter:description") {
-        console.log('Updating twitter:description meta tag');
-        element.setAttribute("content", this.metadata.description);
       } else if (name === "robots") {
-        console.log('Updating robots meta tag');
         element.setAttribute("content", "index, follow");
       }
       
-      console.log(`Updated meta tag content:`, element.getAttribute("content"));
+      console.log(`Updated meta tag: ${name || property}, content: ${element.getAttribute("content")}`);
     }
   }
 }
