@@ -4,11 +4,17 @@ export default {
   async fetch(request, env, ctx) {
     try {
       console.log("Worker started");
-      console.log("Incoming request headers:", Object.fromEntries(request.headers));
+      console.log("Request URL:", request.url);
 
       const url = new URL(request.url);
       const domainSource = config.domainSource;
       const patterns = config.patterns;
+
+      // Skip processing for non-HTML files
+      if (!url.pathname.endsWith('.html') && url.pathname !== '/') {
+        console.log("Skipping non-HTML file:", url.pathname);
+        return fetch(request);
+      }
 
       function getPatternConfig(url) {
         for (const patternConfig of patterns) {
@@ -19,11 +25,6 @@ export default {
           }
         }
         return null;
-      }
-
-      function isPageData(url) {
-        const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
-        return pattern.test(url);
       }
 
       async function requestMetadata(url, metaDataEndpoint) {
@@ -60,8 +61,7 @@ export default {
         const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
         
         if (metadata) {
-          console.log("Metadata fetched:", metadata);
-
+          // Only modify the response if we successfully fetched metadata
           const customHeaderHandler = new CustomHeaderHandler(metadata);
           const transformedResponse = new HTMLRewriter()
             .on('title', customHeaderHandler)
@@ -69,41 +69,22 @@ export default {
             .transform(source);
 
           const headers = new Headers(transformedResponse.headers);
-          
           headers.set('X-Worker-Executed', 'true');
           headers.set('Cache-Control', 'no-store, must-revalidate');
           headers.set('x-robots-tag', 'index, follow');
-
-          console.log("Final response headers:", Object.fromEntries(headers));
 
           return new Response(transformedResponse.body, {
             status: transformedResponse.status,
             statusText: transformedResponse.statusText,
             headers: headers
           });
-        } else {
-          // If metadata fetch fails, return the original response
-          console.log("Metadata fetch failed, returning original response");
-          return source;
         }
       }
 
-      // For non-dynamic pages, return the original response
-      console.log("Fetching original content for:", url.pathname);
-      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
-      const headers = new Headers(sourceResponse.headers);
-      
-      headers.set('X-Worker-Executed', 'true');
-      headers.set('Cache-Control', 'no-store, must-revalidate');
-      headers.set('x-robots-tag', 'index, follow');
-
-      console.log("Final response headers:", Object.fromEntries(headers));
-
-      return new Response(sourceResponse.body, {
-        status: sourceResponse.status,
-        statusText: sourceResponse.statusText,
-        headers: headers
-      });
+      // If we reach here, either it's not a dynamic page or metadata fetch failed
+      // In either case, we return the original response
+      console.log("Returning original response for:", url.pathname);
+      return fetch(request);
 
     } catch (error) {
       console.error("Worker threw an exception:", error.message);
