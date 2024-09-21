@@ -17,6 +17,10 @@ export const config = {
 	{
             pattern: "/categories/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:vyycyb66/weweb/beltAndRanking/metadata/{slug}"
+        },
+	{
+            pattern: "/news/[^/]+",
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:nOwe_not/weweb/news/metadata/{slug}/"
         }
         // Add more patterns and their metadata endpoints as needed
     ]
