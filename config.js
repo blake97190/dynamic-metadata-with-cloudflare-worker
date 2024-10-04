@@ -25,6 +25,10 @@ export const config = {
 	{
             pattern: "/job/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:ZeYJ0jKz/weweb/jobs/metadata/{jobID}"
+        },
+	{
+            pattern: "/rent/[^/]+",
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/venues/metadata/{venueID}/"
         }
         // Add more patterns and their metadata endpoints as needed
     ]
