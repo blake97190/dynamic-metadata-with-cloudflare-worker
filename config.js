@@ -29,6 +29,10 @@ export const config = {
 	{
             pattern: "/rent/[^/]+",
             metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/venues/metadata/{venueID}/"
+        },
+	{
+            pattern: "/trainer/[^/]+",
+            metaDataEndpoint: "https://x7ya-rkul-ymbs.f2.xano.io/api:APGncCGF/weweb/trainers/metadata/{trainerID}"
         }
         // Add more patterns and their metadata endpoints as needed
     ]
